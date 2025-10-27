@@ -69,7 +69,7 @@ SAMPLE_PRODUCTS = [{
     "id":
     "4",
     "name":
-    "Velvet Matte Lipstick",
+    "Velvet Nora Fatehi Matte Lipstick",
     "price":
     28.00,
     "rating":
