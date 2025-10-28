@@ -30,11 +30,17 @@ async def auth_callback(request: Request, db: Session = Depends(get_db)):
         if user_claims:
             user = save_or_update_user(db, user_claims)
             request.session['user_id'] = user.id
+            return RedirectResponse(url='/')
         else:
+            print("Error: No user claims found in token")
             return RedirectResponse(url='/auth/error')
         
-        return RedirectResponse(url='/')
     except Exception as e:
+        error_msg = f"Authentication error: {str(e)}"
+        print(error_msg)
+        import traceback
+        traceback.print_exc()
+        request.session['auth_error'] = error_msg
         return RedirectResponse(url='/auth/error')
 
 
@@ -70,6 +76,18 @@ async def get_me(user: User = Depends(get_current_user)):
 
 
 @router.get("/error")
-async def auth_error():
+async def auth_error(request: Request):
     """Handle authentication errors"""
-    return {"error": "Authentication failed"}
+    error_details = request.session.get('auth_error', 'Authentication failed')
+    return {"error": error_details}
+
+
+@router.get("/test")
+async def test_oauth():
+    """Test OAuth configuration"""
+    from replit_auth import REPL_ID, ISSUER_URL
+    return {
+        "repl_id": REPL_ID[:10] + "..." if REPL_ID else None,
+        "issuer_url": ISSUER_URL,
+        "oauth_configured": True
+    }
