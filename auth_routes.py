@@ -1,57 +1,72 @@
-from datetime import timedelta
-from fastapi import APIRouter, Depends, HTTPException, status
-from fastapi.security import OAuth2PasswordRequestForm
+from fastapi import APIRouter, Request, Depends
+from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
-from typing import List
+from jose import jwt
+from urllib.parse import urlencode
 
 from database import get_db
-from auth_schemas import UserCreate, UserResponse, Token
-from auth_crud import create_user, authenticate_user, get_user_by_username, get_user_by_email
-from auth_utils import create_access_token, get_current_user, ACCESS_TOKEN_EXPIRE_MINUTES
+from replit_auth import oauth, save_or_update_user, get_current_user, ISSUER_URL, REPL_ID
 from models import User
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
-@router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
-def register(user: UserCreate, db: Session = Depends(get_db)):
-    db_user = get_user_by_username(db, username=user.username)
-    if db_user:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Username already registered"
-        )
-    
-    db_user = get_user_by_email(db, email=user.email)
-    if db_user:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Email already registered"
-        )
-    
-    return create_user(db=db, user=user)
 
-@router.post("/login", response_model=Token)
-def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
-    user = authenticate_user(db, form_data.username, form_data.password)
+@router.get("/login")
+async def login(request: Request):
+    """Redirect to Replit OAuth login"""
+    redirect_uri = request.url_for('auth_callback')
+    return await oauth.replit.authorize_redirect(request, redirect_uri)
+
+
+@router.get("/callback")
+async def auth_callback(request: Request, db: Session = Depends(get_db)):
+    """Handle OAuth callback from Replit"""
+    try:
+        token = await oauth.replit.authorize_access_token(request)
+        
+        id_token = token.get('id_token')
+        if id_token:
+            user_claims = jwt.decode(id_token, options={"verify_signature": False})
+            user = save_or_update_user(db, user_claims)
+            request.session['user_id'] = user.id
+        
+        return RedirectResponse(url='/')
+    except Exception as e:
+        return RedirectResponse(url='/auth/error')
+
+
+@router.get("/logout")
+async def logout(request: Request):
+    """Log out the current user"""
+    request.session.clear()
+    
+    end_session_endpoint = f"{ISSUER_URL}/session/end"
+    encoded_params = urlencode({
+        "client_id": REPL_ID,
+        "post_logout_redirect_uri": str(request.base_url),
+    })
+    logout_url = f"{end_session_endpoint}?{encoded_params}"
+    
+    return RedirectResponse(url=logout_url)
+
+
+@router.get("/me")
+async def get_me(user: User = Depends(get_current_user)):
+    """Get current user information"""
     if not user:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect username or password",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
+        return {"authenticated": False}
     
-    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    access_token = create_access_token(
-        data={"sub": user.username}, expires_delta=access_token_expires
-    )
-    
-    return {"access_token": access_token, "token_type": "bearer"}
+    return {
+        "authenticated": True,
+        "id": user.id,
+        "email": user.email,
+        "first_name": user.first_name,
+        "last_name": user.last_name,
+        "profile_image_url": user.profile_image_url
+    }
 
-@router.get("/me", response_model=UserResponse)
-def read_users_me(current_user: User = Depends(get_current_user)):
-    return current_user
 
-@router.get("/users", response_model=List[UserResponse])
-def get_all_users(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    users = db.query(User).all()
-    return users
+@router.get("/error")
+async def auth_error():
+    """Handle authentication errors"""
+    return {"error": "Authentication failed"}
