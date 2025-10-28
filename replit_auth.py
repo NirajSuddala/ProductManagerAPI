@@ -3,7 +3,7 @@ import secrets
 from typing import Optional
 from datetime import datetime, timedelta
 
-from fastapi import Request, HTTPException, status
+from fastapi import Request, HTTPException, status, Depends
 from fastapi.responses import RedirectResponse
 from authlib.integrations.starlette_client import OAuth
 from starlette.middleware.sessions import SessionMiddleware
@@ -72,23 +72,17 @@ def save_or_update_user(db: Session, user_claims: dict) -> User:
     return user
 
 
-async def get_current_user(request: Request, db: Session = next(get_db())) -> Optional[User]:
+async def get_current_user(request: Request, db: Session = Depends(get_db)) -> Optional[User]:
     """Dependency to get current user (doesn't require auth)"""
-    try:
-        return get_current_user_from_session(request, db)
-    finally:
-        db.close()
+    return get_current_user_from_session(request, db)
 
 
-async def require_auth(request: Request, db: Session = next(get_db())) -> User:
+async def require_auth(request: Request, db: Session = Depends(get_db)) -> User:
     """Dependency that requires authentication"""
-    try:
-        user = get_current_user_from_session(request, db)
-        if not user:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Not authenticated"
-            )
-        return user
-    finally:
-        db.close()
+    user = get_current_user_from_session(request, db)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Not authenticated"
+        )
+    return user

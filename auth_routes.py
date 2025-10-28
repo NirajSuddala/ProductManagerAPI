@@ -1,7 +1,6 @@
 from fastapi import APIRouter, Request, Depends
 from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
-from jose import jwt
 from urllib.parse import urlencode
 
 from database import get_db
@@ -24,11 +23,15 @@ async def auth_callback(request: Request, db: Session = Depends(get_db)):
     try:
         token = await oauth.replit.authorize_access_token(request)
         
-        id_token = token.get('id_token')
-        if id_token:
-            user_claims = jwt.decode(id_token, options={"verify_signature": False})
+        user_claims = token.get('userinfo')
+        if not user_claims:
+            user_claims = await oauth.replit.parse_id_token(request, token)
+        
+        if user_claims:
             user = save_or_update_user(db, user_claims)
             request.session['user_id'] = user.id
+        else:
+            return RedirectResponse(url='/auth/error')
         
         return RedirectResponse(url='/')
     except Exception as e:
