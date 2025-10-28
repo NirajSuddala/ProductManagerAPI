@@ -8,6 +8,7 @@ from database import engine, get_db, Base
 from models import Product as ProductModel
 from schemas import Product, ProductCreate, ProductUpdate
 import crud
+import auth_routes
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -22,6 +23,8 @@ async def lifespan(app: FastAPI):
     yield
 
 app = FastAPI(title="Product Management API", lifespan=lifespan)
+
+app.include_router(auth_routes.router)
 
 @app.get("/")
 def read_root():
