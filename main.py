@@ -43,7 +43,7 @@ def read_product(product_id: str, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Product not found")
     return db_product
 
-@app.put("/products/{product_id}", response_model=Product)
+@app.patch("/products/{product_id}", response_model=Product)
 def update_product(product_id: str, product: ProductUpdate, db: Session = Depends(get_db)):
     db_product = crud.update_product(db, product_id=product_id, product=product)
     if db_product is None:
