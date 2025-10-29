@@ -25,16 +25,22 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Product Management API", lifespan=lifespan)
 
-# Add CORS middleware
+# Add CORS middleware - Must be added before any routes
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],  # Allows all origins
     allow_credentials=True,
-    allow_methods=["*"],  # Allows all methods
-    allow_headers=["*"],  # Allows all headers
+    allow_methods=["*"],  # Allow all methods
+    allow_headers=["*"],  # Allow all headers
+    expose_headers=["*"],  # Expose all headers to the client
 )
 
 app.include_router(auth_routes.router)
+
+@app.options("/{path:path}")
+async def options_handler(path: str):
+    """Handle preflight requests for all paths"""
+    return {"message": "OK"}
 
 @app.get("/")
 def read_root():
